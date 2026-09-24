@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy-googletv",
+  "name": "Google TV Remote",
+  "version": "1.0.0",
+  "author": "Andrew",
+  "description": "Google TV & Android TV remote control, app launcher, and network discovery in the Omarchy bar",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Widget.qml"
+  },
+  "barWidget": {
+    "displayName": "Google TV",
+    "description": "Control Google TV / Android TV with D-pad, media buttons, and programmable app shortcuts",
+    "category": "Media",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
