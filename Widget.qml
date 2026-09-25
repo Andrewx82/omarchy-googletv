@@ -330,6 +330,10 @@ Panel {
       root.launchApp(app)
     }
 
+    function setView(v: string): void {
+      root.currentView = v
+    }
+
     function toggle(): void {
       if (root.isFloating) {
         root.floatingVisible = !root.floatingVisible

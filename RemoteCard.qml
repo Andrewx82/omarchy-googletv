@@ -19,6 +19,13 @@ Item {
   readonly property int contentHeight: flick.contentHeight
   readonly property Item keyCatcherItem: keyCatcher
 
+  Connections {
+    target: rootWidget
+    function onCurrentViewChanged() {
+      flick.contentY = 0
+    }
+  }
+
   PanelKeyCatcher {
     id: keyCatcher
     anchors.fill: parent
@@ -476,6 +483,8 @@ Item {
           width: parent.width
           spacing: Style.space(12)
           visible: rootWidget.currentView === "settings"
+          height: visible ? implicitHeight : 0
+          clip: true
 
           RowLayout {
             width: parent.width
@@ -773,6 +782,8 @@ Item {
           width: parent.width
           spacing: Style.space(12)
           visible: rootWidget.currentView === "pairing"
+          height: visible ? implicitHeight : 0
+          clip: true
 
           RowLayout {
             width: parent.width
@@ -895,27 +906,33 @@ Item {
         // ==========================================
         Column {
           width: parent.width
-          spacing: Style.space(12)
+          spacing: Style.space(10)
           visible: rootWidget.currentView === "apps_edit"
+          height: visible ? implicitHeight : 0
+          clip: true
 
           RowLayout {
             width: parent.width
-            spacing: Style.space(8)
+            spacing: Style.space(6)
 
             Button {
               iconText: "󰁮"
               text: "Done"
+              fontSize: Style.font.caption
+              verticalPadding: Style.space(2)
+              horizontalPadding: Style.space(6)
               bordered: true
               onClicked: rootWidget.currentView = "remote"
             }
 
             Text {
-              text: "Program App Buttons"
+              text: "Quick Apps"
               color: (rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground
               font.family: rootWidget.bar ? rootWidget.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.heading
+              font.pixelSize: Style.font.body
               font.bold: true
               Layout.fillWidth: true
+              elide: Text.ElideRight
             }
 
             Button {
@@ -1007,11 +1024,99 @@ Item {
             }
           }
 
+          // Prominent Deep Linking Instruction Box
+          Rectangle {
+            width: parent.width
+            implicitHeight: instructCol.implicitHeight + Style.space(16)
+            radius: Style.cornerRadius
+            color: Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.12)
+            border.color: Color.accent
+            border.width: 1
+
+            Column {
+              id: instructCol
+              anchors.fill: parent
+              anchors.margins: Style.space(10)
+              spacing: Style.space(4)
+
+              RowLayout {
+                spacing: Style.space(6)
+                width: parent.width
+
+                Text {
+                  text: "󰌹"
+                  color: Color.accent
+                  font.pixelSize: Style.font.body
+                  font.bold: true
+                }
+
+                Text {
+                  text: "Deep Linking Should Be Used"
+                  color: (rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground
+                  font.bold: true
+                  font.pixelSize: Style.font.caption
+                  Layout.fillWidth: true
+                }
+              }
+
+              Text {
+                text: "Google TV & Android TV rely on deep link URIs to launch apps reliably over the remote protocol without Play Store redirects:\n\n" +
+                      "• Web Deep Links (Recommended):\n" +
+                      "   https://www.netflix.com/title\n" +
+                      "   https://www.disneyplus.com\n" +
+                      "   https://app.primevideo.com\n" +
+                      "   https://www.youtube.com\n" +
+                      "   https://tv.apple.com\n\n" +
+                      "• Custom URI Schemes:\n" +
+                      "   plex://  •  spotify://  •  kodi://\n" +
+                      "   vlc://   •  twitch://home\n\n" +
+                      "Common apps below are automatically converted to deep links. For custom apps, enter a deep link URI above for instant launching."
+                color: Qt.darker((rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground, 1.2)
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.Wrap
+                width: parent.width
+              }
+            }
+          }
+
+          // Custom App Form
+          PanelSectionHeader {
+            text: "ADD CUSTOM DEEP LINK TO SLOT " + rootWidget.selectedSlot
+            foreground: (rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground
+          }
+
+          TextField {
+            width: parent.width
+            placeholderText: "App Button Label (e.g. Plex)"
+            text: rootWidget.customNameText
+            onTextChanged: rootWidget.customNameText = text
+          }
+
+          TextField {
+            width: parent.width
+            placeholderText: "Deep Link URI (e.g. plex:// or https://...)"
+            text: rootWidget.customAppText
+            onTextChanged: rootWidget.customAppText = text
+          }
+
+          Button {
+            width: parent.width
+            text: "Save Custom App to Slot " + rootWidget.selectedSlot
+            accent: Color.accent
+            bordered: true
+            onClicked: {
+              if (rootWidget.customAppText.trim().length > 0) {
+                var label = rootWidget.customNameText.trim() || "App"
+                rootWidget.setButton(rootWidget.selectedSlot, label, rootWidget.customAppText.trim(), "󰐊")
+              }
+            }
+          }
+
           PanelSeparator { foreground: (rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground }
 
           // Common Apps List
           PanelSectionHeader {
-            text: "COMMON APPS (1-CLICK SETUP)"
+            text: "COMMON APPS (1-CLICK AUTO-SETUP)"
             foreground: (rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground
           }
 
@@ -1033,83 +1138,6 @@ Item {
                   rootWidget.customNameText = modelData.name
                   rootWidget.customAppText = modelData.app
                 }
-              }
-            }
-          }
-
-          PanelSeparator { foreground: (rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground }
-
-          // Custom App Form
-          PanelSectionHeader {
-            text: "ADD CUSTOM APP TO SLOT " + rootWidget.selectedSlot
-            foreground: (rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground
-          }
-
-          TextField {
-            width: parent.width
-            placeholderText: "App Button Label (e.g. Jellyfin)"
-            text: rootWidget.customNameText
-            onTextChanged: rootWidget.customNameText = text
-          }
-
-          TextField {
-            width: parent.width
-            placeholderText: "Deep Link URL or Package (e.g. plex:// or https://...)"
-            text: rootWidget.customAppText
-            onTextChanged: rootWidget.customAppText = text
-          }
-
-          Button {
-            width: parent.width
-            text: "Save Custom App to Slot " + rootWidget.selectedSlot
-            accent: Color.accent
-            bordered: true
-            onClicked: {
-              if (rootWidget.customAppText.trim().length > 0) {
-                var label = rootWidget.customNameText.trim() || "App"
-                rootWidget.setButton(rootWidget.selectedSlot, label, rootWidget.customAppText.trim(), "󰐊")
-              }
-            }
-          }
-
-          // Step-by-Step Instructions Card
-          Rectangle {
-            width: parent.width
-            implicitHeight: instructCol.implicitHeight + Style.space(16)
-            radius: Style.cornerRadius
-            color: Style.controlFill(false, false, (rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground, Color.accent)
-            border.color: Qt.darker((rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground, 1.6)
-            border.width: 1
-
-            Column {
-              id: instructCol
-              anchors.fill: parent
-              anchors.margins: Style.space(10)
-              spacing: Style.space(4)
-
-              Text {
-                text: "󰌹 Deep Linking Should Be Used:"
-                color: Color.accent
-                font.bold: true
-                font.pixelSize: Style.font.caption
-              }
-
-              Text {
-                text: "Google TV & Android TV rely on deep link URIs to launch apps reliably over the remote protocol without Play Store redirects:\n\n" +
-                      "• Web Deep Links (Recommended):\n" +
-                      "   https://www.netflix.com/title\n" +
-                      "   https://www.disneyplus.com\n" +
-                      "   https://app.primevideo.com\n" +
-                      "   https://www.youtube.com\n" +
-                      "   https://tv.apple.com\n\n" +
-                      "• Custom URI Schemes:\n" +
-                      "   plex://  •  spotify://  •  kodi://\n" +
-                      "   vlc://   •  twitch://home\n\n" +
-                      "Common apps and standard package IDs (e.g. com.netflix.ninja) are automatically converted to deep links. For custom apps, enter a deep link URL above for instant launching."
-                color: Qt.darker((rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground, 1.3)
-                font.pixelSize: Style.font.caption
-                wrapMode: Text.Wrap
-                width: parent.width
               }
             }
           }
