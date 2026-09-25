@@ -2,20 +2,20 @@
 # Setup script for omarchy-googletv dependencies
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 echo "==> Setting up Google TV Remote dependencies for Omarchy Shell..."
 
-DATA_DIR="${HOME}/.config/omarchy/googletv"
-VENV_DIR="${DATA_DIR}/.venv"
+data_dir="${HOME}/.config/omarchy/googletv"
+venv_dir="${data_dir}/.venv"
 
-mkdir -p "${DATA_DIR}"
+mkdir -p "${data_dir}"
 
-if [[ ! -d "${VENV_DIR}" ]]; then
-    echo "==> Creating Python virtual environment in ${VENV_DIR}..."
-    python3 -m venv "${VENV_DIR}"
+if [[ ! -d "${venv_dir}" ]]; then
+    echo "==> Creating Python virtual environment in ${venv_dir}..."
+    python3 -m venv "${venv_dir}"
 fi
 
-echo "==> Installing androidtvremote2 and cryptography..."
-"${VENV_DIR}/bin/pip" install --upgrade pip -q
-"${VENV_DIR}/bin/pip" install -q "androidtvremote2>=0.0.14" "cryptography"
+echo "==> Installing pinned dependencies with verified artifact hashes..."
+"${venv_dir}/bin/python" -m pip install --require-hashes --only-binary=:all: -r "${script_dir}/requirements.lock"
 
-echo "==> Setup complete! Dependencies installed in ${VENV_DIR}"
+echo "==> Setup complete! Dependencies installed in ${venv_dir}"

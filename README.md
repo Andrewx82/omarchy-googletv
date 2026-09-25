@@ -179,7 +179,10 @@ omarchy-shell omarchy.googletv dock
 ├── Widget.qml                               # Main bar widget & window coordinator
 ├── RemoteCard.qml                           # Reusable UI card (docked & floating)
 ├── backend.py                               # Python daemon & CLI protocol engine
-├── setup.sh                                 # Automated dependency installer
+├── setup.sh                                 # Secure dependency installer (--require-hashes)
+├── requirements.lock                        # Pinned dependencies with verified SHA-256 hashes
+├── scripts/
+│   └── lock-dependencies.py                 # Dependency hash verification script
 ├── LICENSE                                  # MIT License
 ├── README.md                                # Documentation
 └── assets/                                  # Preview screenshots
