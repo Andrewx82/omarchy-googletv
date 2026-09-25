@@ -322,6 +322,10 @@ Panel {
       root.refreshStatus()
     }
 
+    function key(k: string): void {
+      root.sendKey(k)
+    }
+
     function toggle(): void {
       if (root.isFloating) {
         root.floatingVisible = !root.floatingVisible

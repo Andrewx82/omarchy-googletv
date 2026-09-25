@@ -196,6 +196,26 @@ class GoogleTVDaemon:
             return tvs[first_ip]
         return None
 
+    def _is_transport_connected(self) -> bool:
+        if not self.remote or not self.connected:
+            return False
+        proto = getattr(self.remote, "_remote_message_protocol", None)
+        if not proto:
+            return False
+        transport = getattr(proto, "transport", None)
+        return bool(transport and not transport.is_closing())
+
+    def _on_is_available_updated(self, is_available: bool):
+        self.connected = is_available
+
+    def _on_invalid_auth(self):
+        self.connected = False
+        tv = self.get_active_tv()
+        if tv:
+            tv["paired"] = False
+            self.config.get("tvs", {})[tv["ip"]] = tv
+            save_config(self.config)
+
     def _on_is_on_updated(self, is_on: bool):
         self.is_on = is_on
 
@@ -247,9 +267,11 @@ class GoogleTVDaemon:
             self.remote.add_is_on_updated_callback(self._on_is_on_updated)
             self.remote.add_current_app_updated_callback(self._on_current_app_updated)
             self.remote.add_volume_info_updated_callback(self._on_volume_info_updated)
+            self.remote.add_is_available_updated_callback(self._on_is_available_updated)
 
-            await asyncio.wait_for(self.remote.async_connect(), timeout=3.0)
+            await asyncio.wait_for(self.remote.async_connect(), timeout=4.0)
             self.connected = True
+            self.remote.keep_reconnecting(invalid_auth_callback=self._on_invalid_auth)
             return True
         except (InvalidAuth, ConnectionClosed, CannotConnect, asyncio.TimeoutError, Exception) as exc:
             self.connected = False
@@ -263,7 +285,7 @@ class GoogleTVDaemon:
     async def auto_reconnect_loop(self):
         while self.running:
             tv = self.get_active_tv()
-            if tv and tv.get("paired", False) and not self.connected and not self.pairing_active:
+            if tv and tv.get("paired", False) and not self._is_transport_connected() and not self.pairing_active:
                 await self.connect_active_tv()
             await asyncio.sleep(5)
 
@@ -304,12 +326,13 @@ class GoogleTVDaemon:
             }
 
         elif cmd == "status":
+            is_connected = self._is_transport_connected()
             return {
                 "ok": True,
-                "connected": self.connected,
-                "is_on": self.is_on,
-                "current_app": self.current_app,
-                "volume": self.volume_info,
+                "connected": is_connected,
+                "is_on": self.is_on if is_connected else False,
+                "current_app": self.current_app if is_connected else "",
+                "volume": self.volume_info if is_connected else {},
                 "pairing_active": self.pairing_active,
                 "active_tv": self.get_active_tv(),
                 "config": self.config,
@@ -321,9 +344,9 @@ class GoogleTVDaemon:
             if not key_name:
                 return {"ok": False, "error": "No key specified"}
 
-            if not self.connected or not self.remote:
+            if not self._is_transport_connected():
                 connected = await self.connect_active_tv()
-                if not connected:
+                if not connected or not self._is_transport_connected():
                     return {"ok": False, "error": "TV not connected. Check pairing."}
 
             try:
@@ -338,9 +361,9 @@ class GoogleTVDaemon:
             if not app:
                 return {"ok": False, "error": "No app specified"}
 
-            if not self.connected or not self.remote:
+            if not self._is_transport_connected():
                 connected = await self.connect_active_tv()
-                if not connected:
+                if not connected or not self._is_transport_connected():
                     return {"ok": False, "error": "TV not connected. Check pairing."}
 
             try:
@@ -355,9 +378,9 @@ class GoogleTVDaemon:
             if not text_str:
                 return {"ok": False, "error": "No text specified"}
 
-            if not self.connected or not self.remote:
+            if not self._is_transport_connected():
                 connected = await self.connect_active_tv()
-                if not connected:
+                if not connected or not self._is_transport_connected():
                     return {"ok": False, "error": "TV not connected. Check pairing."}
 
             try:
