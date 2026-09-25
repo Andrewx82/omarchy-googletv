@@ -1054,7 +1054,7 @@ Item {
 
           TextField {
             width: parent.width
-            placeholderText: "Package ID or URL (e.g. org.jellyfin.androidtv)"
+            placeholderText: "Deep Link URL or Package (e.g. plex:// or https://...)"
             text: rootWidget.customAppText
             onTextChanged: rootWidget.customAppText = text
           }
@@ -1088,14 +1088,24 @@ Item {
               spacing: Style.space(4)
 
               Text {
-                text: "ℹ How to find an Android TV App ID:"
-                color: (rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground
+                text: "󰌹 Deep Linking Should Be Used:"
+                color: Color.accent
                 font.bold: true
                 font.pixelSize: Style.font.caption
               }
 
               Text {
-                text: "1. Open play.google.com in a web browser.\n2. Search for the Android TV app.\n3. Check the page URL in your browser bar:\n   play.google.com/store/apps/details?id=package.name\n4. Copy the package ID (e.g. org.xbmc.kodi) and paste it above.\n\nDeep link URLs (e.g. https://... or netflix://) are also supported."
+                text: "Google TV & Android TV rely on deep link URIs to launch apps reliably over the remote protocol without Play Store redirects:\n\n" +
+                      "• Web Deep Links (Recommended):\n" +
+                      "   https://www.netflix.com/title\n" +
+                      "   https://www.disneyplus.com\n" +
+                      "   https://app.primevideo.com\n" +
+                      "   https://www.youtube.com\n" +
+                      "   https://tv.apple.com\n\n" +
+                      "• Custom URI Schemes:\n" +
+                      "   plex://  •  spotify://  •  kodi://\n" +
+                      "   vlc://   •  twitch://home\n\n" +
+                      "Common apps and standard package IDs (e.g. com.netflix.ninja) are automatically converted to deep links. For custom apps, enter a deep link URL above for instant launching."
                 color: Qt.darker((rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground, 1.3)
                 font.pixelSize: Style.font.caption
                 wrapMode: Text.Wrap

@@ -50,7 +50,7 @@ Seamlessly toggle between a compact status-bar popup and a persistent, draggable
 - 4 customizable slots (2x2 grid) displayed directly on the remote interface.
 - **15 Built-in 1-Click Presets**:
   - YouTube, Netflix, Disney+, Prime Video, Plex, Spotify, Twitch, Apple TV, Max, Kodi, SmartTube, Jellyfin, Hulu, Crunchyroll, and VLC.
-- **Custom App Support**: Bind any custom Android application or deep-link URI (e.g., `org.jellyfin.androidtv`, `org.xbmc.kodi`) with an in-app step-by-step guide for finding package IDs from the Google Play Store.
+- **Custom Deep Link Support**: Deep linking should be used for reliable app launching. Built-in presets and package IDs are automatically resolved to verified deep links (`https://...` or `scheme://`). Custom apps can be bound directly to their URI schemes (e.g. `plex://`, `kodi://`, `https://tv.apple.com`).
 
 ### 5. Automatic Network Discovery & Multi-TV Management
 - **mDNS Network Scanning**: Automatically scans your local network (`_androidtvremote2._tcp`) for connected Google TVs, Android TVs, and NVIDIA SHIELD devices.
