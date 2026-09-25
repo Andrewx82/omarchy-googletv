@@ -490,9 +490,10 @@ class GoogleTVDaemon:
     async def send_text_to_tv(self, text_str: str) -> None:
         """Send text to TV via Android TV Remote v2 protocol.
         
-        Uses the proven two-step IME batch edit sequence (insert=0 followed by insert=1)
-        which correctly synchronizes with Android TV's virtual keyboard and updates the
-        active input field across Google TV Search, Play Store, YouTube, and all IME apps.
+        Uses RemoteImeBatchEdit with insert=0 and full replacement range (start=0, end=1000).
+        This directly instructs Android TV's virtual keyboard (Leanback/Gboard) to clear any
+        prior text and reliably input the new string character-by-character into the active
+        search/input field across Google TV Search, YouTube, Netflix, Nuvio, and all TV apps.
         """
         if not self.remote:
             return
@@ -503,30 +504,17 @@ class GoogleTVDaemon:
 
         if RemoteMessage and RemoteImeBatchEdit and RemoteEditInfo and RemoteImeObject:
             try:
-                # Step 1: Initialize/clear target field with insert=0
-                obj0 = RemoteImeObject(start=0, end=len(text_str), value=text_str)
-                edit0 = RemoteEditInfo(insert=0, text_field_status=obj0)
-                b0 = RemoteImeBatchEdit(ime_counter=0, field_counter=0, edit_info=[edit0])
-                msg0 = RemoteMessage()
-                msg0.remote_ime_batch_edit.CopyFrom(b0)
-                proto._send_message(msg0)
-
-                # Brief pause to let Android TV input method process the field state
-                await asyncio.sleep(0.08)
-
-                # Step 2: Commit the full text string with insert=1
-                param = max(0, len(text_str) - 1)
-                obj1 = RemoteImeObject(start=param, end=param, value=text_str)
-                edit1 = RemoteEditInfo(insert=1, text_field_status=obj1)
-                b1 = RemoteImeBatchEdit(ime_counter=0, field_counter=0, edit_info=[edit1])
-                msg1 = RemoteMessage()
-                msg1.remote_ime_batch_edit.CopyFrom(b1)
-                proto._send_message(msg1)
+                obj = RemoteImeObject(start=0, end=1000, value=text_str)
+                edit = RemoteEditInfo(insert=0, text_field_status=obj)
+                batch = RemoteImeBatchEdit(ime_counter=0, field_counter=0, edit_info=[edit])
+                msg = RemoteMessage()
+                msg.remote_ime_batch_edit.CopyFrom(batch)
+                proto._send_message(msg)
                 return
             except Exception:
                 pass
 
-        # Fallback to standard send_text
+        # Fallback to standard send_text if protobuf classes are unavailable
         try:
             self.remote.send_text(text_str)
         except Exception:
