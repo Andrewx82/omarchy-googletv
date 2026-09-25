@@ -38,9 +38,16 @@ try:
         ConnectionClosed,
         InvalidAuth,
     )
+    from androidtvremote2.remotemessage_pb2 import (
+        RemoteMessage,
+        RemoteImeBatchEdit,
+        RemoteEditInfo,
+        RemoteImeObject,
+    )
 except ImportError:
     AndroidTVRemote = None
     CannotConnect = ConnectionClosed = InvalidAuth = Exception
+    RemoteMessage = RemoteImeBatchEdit = RemoteEditInfo = RemoteImeObject = None
 
 CONFIG_FILE = CONFIG_DIR / "config.json"
 CERT_DIR = CONFIG_DIR / "certs"
@@ -481,41 +488,49 @@ class GoogleTVDaemon:
                 pass
 
     async def send_text_to_tv(self, text_str: str) -> None:
-        """Send text to TV via hybrid character key injection and IME protocol.
+        """Send text to TV via Android TV Remote v2 protocol.
         
-        Hardware key injection is universally supported across native Google TV IME,
-        Gboard, and custom third-party media app search fields (Nuvio, TiviMate,
-        SmartTube, Kodi, etc.).
+        Uses the proven two-step IME batch edit sequence (insert=0 followed by insert=1)
+        which correctly synchronizes with Android TV's virtual keyboard and updates the
+        active input field across Google TV Search, Play Store, YouTube, and all IME apps.
         """
         if not self.remote:
             return
 
-        has_unmapped = any(ch not in CHAR_KEY_MAP for ch in text_str)
-        if has_unmapped:
+        proto = getattr(self.remote, "_remote_message_protocol", None)
+        if not proto:
+            return
+
+        if RemoteMessage and RemoteImeBatchEdit and RemoteEditInfo and RemoteImeObject:
             try:
-                self.remote.send_text(text_str)
+                # Step 1: Initialize/clear target field with insert=0
+                obj0 = RemoteImeObject(start=0, end=len(text_str), value=text_str)
+                edit0 = RemoteEditInfo(insert=0, text_field_status=obj0)
+                b0 = RemoteImeBatchEdit(ime_counter=0, field_counter=0, edit_info=[edit0])
+                msg0 = RemoteMessage()
+                msg0.remote_ime_batch_edit.CopyFrom(b0)
+                proto._send_message(msg0)
+
+                # Brief pause to let Android TV input method process the field state
+                await asyncio.sleep(0.08)
+
+                # Step 2: Commit the full text string with insert=1
+                param = max(0, len(text_str) - 1)
+                obj1 = RemoteImeObject(start=param, end=param, value=text_str)
+                edit1 = RemoteEditInfo(insert=1, text_field_status=obj1)
+                b1 = RemoteImeBatchEdit(ime_counter=0, field_counter=0, edit_info=[edit1])
+                msg1 = RemoteMessage()
+                msg1.remote_ime_batch_edit.CopyFrom(b1)
+                proto._send_message(msg1)
                 return
             except Exception:
                 pass
 
-        for ch in text_str:
-            if ch in CHAR_KEY_MAP:
-                key_name, needs_shift = CHAR_KEY_MAP[ch]
-                if needs_shift:
-                    self.remote.send_key_command("SHIFT_LEFT", "START_LONG")
-                    await asyncio.sleep(0.015)
-                    self.remote.send_key_command(key_name, "SHORT")
-                    await asyncio.sleep(0.015)
-                    self.remote.send_key_command("SHIFT_LEFT", "END_LONG")
-                else:
-                    self.remote.send_key_command(key_name, "SHORT")
-                await asyncio.sleep(0.035)
-            else:
-                try:
-                    self.remote.send_text(ch)
-                except Exception:
-                    pass
-                await asyncio.sleep(0.035)
+        # Fallback to standard send_text
+        try:
+            self.remote.send_text(text_str)
+        except Exception:
+            pass
 
     async def process_command(self, cmd: str, req: Dict[str, Any]) -> Dict[str, Any]:
         if cmd == "ping":
