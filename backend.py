@@ -15,7 +15,7 @@ import signal
 import re
 import subprocess
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 CONFIG_DIR = Path.home() / ".config" / "omarchy" / "googletv"
 VENV_DIR = CONFIG_DIR / ".venv"
@@ -166,6 +166,77 @@ def resolve_app_target(app_str: str) -> str:
     if lower.startswith("www.") or lower.endswith(".com") or lower.endswith(".tv") or lower.endswith(".org"):
         return f"https://{cleaned}"
     return cleaned
+
+# Mapping of character -> (RemoteKeyCode base name, requires_shift)
+# Universally supported by Android TV IME and all third-party app search boxes.
+CHAR_KEY_MAP: Dict[str, Tuple[str, bool]] = {
+    # Lowercase letters
+    'a': ('A', False), 'b': ('B', False), 'c': ('C', False), 'd': ('D', False),
+    'e': ('E', False), 'f': ('F', False), 'g': ('G', False), 'h': ('H', False),
+    'i': ('I', False), 'j': ('J', False), 'k': ('K', False), 'l': ('L', False),
+    'm': ('M', False), 'n': ('N', False), 'o': ('O', False), 'p': ('P', False),
+    'q': ('Q', False), 'r': ('R', False), 's': ('S', False), 't': ('T', False),
+    'u': ('U', False), 'v': ('V', False), 'w': ('W', False), 'x': ('X', False),
+    'y': ('Y', False), 'z': ('Z', False),
+
+    # Uppercase letters
+    'A': ('A', True), 'B': ('B', True), 'C': ('C', True), 'D': ('D', True),
+    'E': ('E', True), 'F': ('F', True), 'G': ('G', True), 'H': ('H', True),
+    'I': ('I', True), 'J': ('J', True), 'K': ('K', True), 'L': ('L', True),
+    'M': ('M', True), 'N': ('N', True), 'O': ('O', True), 'P': ('P', True),
+    'Q': ('Q', True), 'R': ('R', True), 'S': ('S', True), 'T': ('T', True),
+    'U': ('U', True), 'V': ('V', True), 'W': ('W', True), 'X': ('X', True),
+    'Y': ('Y', True), 'Z': ('Z', True),
+
+    # Digits
+    '0': ('0', False), '1': ('1', False), '2': ('2', False), '3': ('3', False),
+    '4': ('4', False), '5': ('5', False), '6': ('6', False), '7': ('7', False),
+    '8': ('8', False), '9': ('9', False),
+
+    # Whitespace & Control
+    ' ': ('SPACE', False),
+    '\t': ('TAB', False),
+    '\n': ('ENTER', False),
+    '\r': ('ENTER', False),
+
+    # Direct / unshifted punctuation
+    '.': ('PERIOD', False),
+    ',': ('COMMA', False),
+    '-': ('MINUS', False),
+    '=': ('EQUALS', False),
+    '/': ('SLASH', False),
+    '\\': ('BACKSLASH', False),
+    ';': ('SEMICOLON', False),
+    "'": ('APOSTROPHE', False),
+    '[': ('LEFT_BRACKET', False),
+    ']': ('RIGHT_BRACKET', False),
+    '`': ('GRAVE', False),
+
+    # Dedicated keycodes
+    '@': ('AT', False),
+    '*': ('STAR', False),
+    '#': ('POUND', False),
+    '+': ('PLUS', False),
+
+    # Shifted punctuation
+    '!': ('1', True),
+    '$': ('4', True),
+    '%': ('5', True),
+    '^': ('6', True),
+    '&': ('7', True),
+    '(': ('9', True),
+    ')': ('0', True),
+    '_': ('MINUS', True),
+    '{': ('LEFT_BRACKET', True),
+    '}': ('RIGHT_BRACKET', True),
+    '|': ('BACKSLASH', True),
+    ':': ('SEMICOLON', True),
+    '"': ('APOSTROPHE', True),
+    '<': ('COMMA', True),
+    '>': ('PERIOD', True),
+    '?': ('SLASH', True),
+    '~': ('GRAVE', True),
+}
 
 def ensure_dirs():
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -409,6 +480,43 @@ class GoogleTVDaemon:
             except Exception:
                 pass
 
+    async def send_text_to_tv(self, text_str: str) -> None:
+        """Send text to TV via hybrid character key injection and IME protocol.
+        
+        Hardware key injection is universally supported across native Google TV IME,
+        Gboard, and custom third-party media app search fields (Nuvio, TiviMate,
+        SmartTube, Kodi, etc.).
+        """
+        if not self.remote:
+            return
+
+        has_unmapped = any(ch not in CHAR_KEY_MAP for ch in text_str)
+        if has_unmapped:
+            try:
+                self.remote.send_text(text_str)
+                return
+            except Exception:
+                pass
+
+        for ch in text_str:
+            if ch in CHAR_KEY_MAP:
+                key_name, needs_shift = CHAR_KEY_MAP[ch]
+                if needs_shift:
+                    self.remote.send_key_command("SHIFT_LEFT", "START_LONG")
+                    await asyncio.sleep(0.015)
+                    self.remote.send_key_command(key_name, "SHORT")
+                    await asyncio.sleep(0.015)
+                    self.remote.send_key_command("SHIFT_LEFT", "END_LONG")
+                else:
+                    self.remote.send_key_command(key_name, "SHORT")
+                await asyncio.sleep(0.035)
+            else:
+                try:
+                    self.remote.send_text(ch)
+                except Exception:
+                    pass
+                await asyncio.sleep(0.035)
+
     async def process_command(self, cmd: str, req: Dict[str, Any]) -> Dict[str, Any]:
         if cmd == "ping":
             return {
@@ -478,7 +586,7 @@ class GoogleTVDaemon:
                     return {"ok": False, "error": "TV not connected. Check pairing."}
 
             try:
-                self.remote.send_text(text_str)
+                await self.send_text_to_tv(text_str)
                 return {"ok": True, "text": text_str}
             except Exception as e:
                 self.connected = False
@@ -807,7 +915,7 @@ def client_request(payload: Dict[str, Any], timeout: float = 5.0) -> Dict[str, A
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: backend.py [daemon|ensure-daemon|status|key <NAME>|launch <APP>|scan|pair-start [IP]|pair-finish <CODE>|add-tv <IP> [NAME]|select-tv <IP>|set-button <SLOT> <NAME> <APP> [ICON]]")
+        print("Usage: backend.py [daemon|ensure-daemon|status|key <NAME>|launch <APP>|text <TEXT>|scan|pair-start [IP]|pair-finish <CODE>|add-tv <IP> [NAME]|select-tv <IP>|set-button <SLOT> <NAME> <APP> [ICON]]")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -836,7 +944,7 @@ def main():
             print(json.dumps({"ok": False, "error": "Missing text argument"}))
             sys.exit(1)
         text_arg = " ".join(sys.argv[2:])
-        print(json.dumps(client_request({"cmd": "text", "text": text_arg})))
+        print(json.dumps(client_request({"cmd": "text", "text": text_arg}, timeout=15.0)))
     elif cmd == "scan":
         # Scanning can take up to 3 seconds
         print(json.dumps(client_request({"cmd": "scan"}, timeout=8.0)))

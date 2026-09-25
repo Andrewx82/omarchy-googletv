@@ -326,6 +326,10 @@ Panel {
       root.sendKey(k)
     }
 
+    function text(t: string): void {
+      root.sendText(t)
+    }
+
     function launch(app: string): void {
       root.launchApp(app)
     }
