@@ -74,6 +74,99 @@ DEFAULT_BUTTONS = [
     {"slot": 4, "name": "Prime", "app": "com.amazon.amazonvideo.livingroom", "icon": "󰢔"}
 ]
 
+APP_DEEP_LINKS: Dict[str, str] = {
+    # YouTube & SmartTube
+    "com.google.android.youtube.tv": "https://www.youtube.com",
+    "com.google.android.youtube": "https://www.youtube.com",
+    "youtube": "https://www.youtube.com",
+    "vnd.youtube": "https://www.youtube.com",
+    "com.teamsmart.videomanager.tv": "https://www.youtube.com",
+    "org.smarttube.beta": "https://www.youtube.com",
+    "smarttube": "https://www.youtube.com",
+    # Netflix
+    "com.netflix.ninja": "https://www.netflix.com/title",
+    "com.netflix.mediaclient": "https://www.netflix.com/title",
+    "netflix": "https://www.netflix.com/title",
+    # Disney+
+    "com.disney.disneyplus": "https://www.disneyplus.com",
+    "disney": "https://www.disneyplus.com",
+    "disney+": "https://www.disneyplus.com",
+    # Prime Video
+    "com.amazon.amazonvideo.livingroom": "https://app.primevideo.com",
+    "com.amazon.avod.thirdpartyclient": "https://app.primevideo.com",
+    "prime": "https://app.primevideo.com",
+    "prime video": "https://app.primevideo.com",
+    "amazon": "https://app.primevideo.com",
+    # Plex
+    "com.plexapp.android": "plex://",
+    "plex": "plex://",
+    # Spotify
+    "com.spotify.tv.android": "spotify://",
+    "com.spotify.music": "spotify://",
+    "spotify": "spotify://",
+    # Twitch
+    "tv.twitch.android.app": "twitch://home",
+    "twitch": "twitch://home",
+    # Apple TV
+    "com.apple.atve.androidtv.appletv": "https://tv.apple.com",
+    "appletv": "https://tv.apple.com",
+    "apple tv": "https://tv.apple.com",
+    # Max / HBO Max
+    "com.wbd.stream": "https://play.max.com",
+    "max": "https://play.max.com",
+    "com.hbo.hbonow": "https://play.hbomax.com",
+    "hbomax": "https://play.hbomax.com",
+    "hbo": "https://play.hbomax.com",
+    # Kodi
+    "org.xbmc.kodi": "kodi://",
+    "kodi": "kodi://",
+    # Jellyfin
+    "org.jellyfin.androidtv": "jellyfin://",
+    "jellyfin": "jellyfin://",
+    # Hulu
+    "com.hulu.livingroomplus": "https://www.hulu.com",
+    "hulu": "https://www.hulu.com",
+    # Crunchyroll
+    "com.crunchyroll.crunchyroid": "crunchyroll://",
+    "crunchyroll": "crunchyroll://",
+    # VLC
+    "org.videolan.vlc": "vlc://",
+    "vlc": "vlc://",
+    # Stremio
+    "com.stremio.one": "stremio:///",
+    "stremio": "stremio:///",
+    # Emby
+    "tv.emby.embyatv": "embyatv://tv.emby.embyatv/startapp",
+    "emby": "embyatv://tv.emby.embyatv/startapp",
+    # Tubi
+    "com.tubitv": "https://tubitv.com/",
+    "tubi": "https://tubitv.com/",
+    # Paramount+
+    "com.cbs.ott": "https://www.paramountplus.com/",
+    "paramount": "https://www.paramountplus.com/",
+    "paramount+": "https://www.paramountplus.com/",
+    # Google Play Store
+    "com.android.vending": "https://play.google.com/store/",
+    "playstore": "https://play.google.com/store/",
+    "play store": "https://play.google.com/store/",
+}
+
+def resolve_app_target(app_str: str) -> str:
+    """Resolve an app package name, identifier, or URI to a working Android TV deep link."""
+    cleaned = (app_str or "").strip()
+    if not cleaned:
+        return ""
+    if "://" in cleaned:
+        return cleaned
+    lower = cleaned.lower()
+    if lower in APP_DEEP_LINKS:
+        return APP_DEEP_LINKS[lower]
+    if cleaned in APP_DEEP_LINKS:
+        return APP_DEEP_LINKS[cleaned]
+    if lower.startswith("www.") or lower.endswith(".com") or lower.endswith(".tv") or lower.endswith(".org"):
+        return f"https://{cleaned}"
+    return cleaned
+
 def ensure_dirs():
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     CERT_DIR.mkdir(parents=True, exist_ok=True)
@@ -366,9 +459,10 @@ class GoogleTVDaemon:
                 if not connected or not self._is_transport_connected():
                     return {"ok": False, "error": "TV not connected. Check pairing."}
 
+            target = resolve_app_target(app)
             try:
-                self.remote.send_launch_app_command(app)
-                return {"ok": True, "app": app}
+                self.remote.send_launch_app_command(target)
+                return {"ok": True, "app": app, "target": target}
             except Exception as e:
                 self.connected = False
                 return {"ok": False, "error": str(e)}
@@ -735,7 +829,7 @@ def main():
         if len(sys.argv) < 3:
             print(json.dumps({"ok": False, "error": "Missing app argument"}))
             sys.exit(1)
-        app = sys.argv[2]
+        app = " ".join(sys.argv[2:])
         print(json.dumps(client_request({"cmd": "launch", "app": app})))
     elif cmd == "text":
         if len(sys.argv) < 3:

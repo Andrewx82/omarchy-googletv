@@ -326,6 +326,10 @@ Panel {
       root.sendKey(k)
     }
 
+    function launch(app: string): void {
+      root.launchApp(app)
+    }
+
     function toggle(): void {
       if (root.isFloating) {
         root.floatingVisible = !root.floatingVisible
