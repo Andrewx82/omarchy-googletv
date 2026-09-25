@@ -605,6 +605,20 @@ Item {
                   bordered: true
                   onClicked: rootWidget.selectTv(modelData)
                 }
+
+                Button {
+                  visible: !rootWidget.allTvs[modelData].paired
+                  text: "Pair"
+                  accent: Color.accent
+                  bordered: true
+                  fontSize: Style.font.caption
+                  verticalPadding: Style.space(2)
+                  horizontalPadding: Style.space(8)
+                  onClicked: {
+                    rootWidget.selectTv(modelData)
+                    rootWidget.startPairing(modelData)
+                  }
+                }
               }
             }
           }
@@ -663,21 +677,45 @@ Item {
                       font.pixelSize: Style.font.body
                     }
                     Text {
-                      text: modelData.ip + " • " + modelData.model
+                      text: modelData.ip + " • " + modelData.model + (modelData.paired ? " (Paired)" : " (Unpaired)")
                       color: Qt.darker((rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground, 1.4)
                       font.pixelSize: Style.font.caption
                     }
                   }
 
                   Button {
-                    text: modelData.ip === rootWidget.tvIp ? "Selected" : "Select"
-                    selected: modelData.ip === rootWidget.tvIp
+                    visible: modelData.ip === rootWidget.tvIp
+                    text: "Active"
+                    selected: true
                     bordered: true
+                    fontSize: Style.font.caption
+                    verticalPadding: Style.space(2)
+                    horizontalPadding: Style.space(6)
+                  }
+
+                  Button {
+                    visible: modelData.ip !== rootWidget.tvIp
+                    text: "Select"
+                    bordered: true
+                    fontSize: Style.font.caption
+                    verticalPadding: Style.space(2)
+                    horizontalPadding: Style.space(6)
                     onClicked: {
-                      rootWidget.manualIpText = modelData.ip
-                      rootWidget.manualNameText = modelData.name
-                      rootWidget.addTvManual()
-                      rootWidget.selectTv(modelData.ip)
+                      rootWidget.selectTv(modelData.ip, modelData.name, modelData.port)
+                    }
+                  }
+
+                  Button {
+                    visible: !modelData.paired && !(modelData.ip === rootWidget.tvIp && rootWidget.tvPaired)
+                    text: "Pair"
+                    accent: Color.accent
+                    bordered: true
+                    fontSize: Style.font.caption
+                    verticalPadding: Style.space(2)
+                    horizontalPadding: Style.space(6)
+                    onClicked: {
+                      rootWidget.selectTv(modelData.ip, modelData.name, modelData.port)
+                      rootWidget.startPairing(modelData.ip)
                     }
                   }
                 }

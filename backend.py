@@ -25,10 +25,11 @@ if not VENV_DIR.exists():
         VENV_DIR = fallback_venv
 
 if VENV_DIR.exists():
-    py_ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
-    site_packages = VENV_DIR / "lib" / py_ver / "site-packages"
-    if site_packages.exists() and str(site_packages) not in sys.path:
-        sys.path.insert(0, str(site_packages))
+    lib_dir = VENV_DIR / "lib"
+    if lib_dir.exists():
+        for p in lib_dir.glob("python*/site-packages"):
+            if str(p) not in sys.path:
+                sys.path.insert(0, str(p))
 
 try:
     from androidtvremote2 import (
@@ -393,11 +394,16 @@ class GoogleTVDaemon:
 
             try:
                 self.pairing_ip = ip
+                tv = self.config.get("tvs", {}).get(ip, {})
+                api_port = int(tv.get("port", 6466))
+                pair_port = int(tv.get("pair_port", 6467))
                 self.pairing_remote = AndroidTVRemote(
                     "Omarchy",
                     str(CERT_FILE),
                     str(KEY_FILE),
                     ip,
+                    api_port=api_port,
+                    pair_port=pair_port,
                     loop=self.loop
                 )
                 await self.pairing_remote.async_generate_cert_if_missing()
@@ -491,10 +497,10 @@ class GoogleTVDaemon:
                 "model": model,
                 "paired": tvs.get(ip, {}).get("paired", False)
             }
-            if not self.config.get("selected_tv"):
-                self.config["selected_tv"] = ip
+            self.config["selected_tv"] = ip
             self.config["tvs"] = tvs
             save_config(self.config)
+            await self.connect_active_tv()
             return {"ok": True, "config": self.config}
 
         elif cmd == "remove_tv":
@@ -514,13 +520,29 @@ class GoogleTVDaemon:
 
         elif cmd == "select_tv":
             ip = req.get("ip", "").strip()
+            name = req.get("name", "").strip()
+            port = int(req.get("port", 6466))
+            model = req.get("model", "Google TV")
+            if not ip:
+                return {"ok": False, "error": "Missing IP"}
+
             tvs = self.config.get("tvs", {})
-            if ip in tvs:
-                self.config["selected_tv"] = ip
-                save_config(self.config)
-                await self.connect_active_tv()
-                return {"ok": True, "selected_tv": ip}
-            return {"ok": False, "error": f"TV with IP {ip} not found"}
+            if ip not in tvs:
+                tvs[ip] = {
+                    "name": name or f"Google TV ({ip})",
+                    "ip": ip,
+                    "port": port,
+                    "model": model,
+                    "paired": False
+                }
+            elif name and (tvs[ip].get("name", "").startswith("Google TV (") or not tvs[ip].get("name")):
+                tvs[ip]["name"] = name
+
+            self.config["selected_tv"] = ip
+            self.config["tvs"] = tvs
+            save_config(self.config)
+            await self.connect_active_tv()
+            return {"ok": True, "selected_tv": ip}
 
         elif cmd == "set_button":
             slot = int(req.get("slot", 1))
@@ -625,6 +647,10 @@ def ensure_daemon():
         return True
     # Spawn daemon in background using nohup / detached process
     python_bin = sys.executable
+    if VENV_DIR.exists():
+        venv_py = VENV_DIR / "bin" / "python"
+        if venv_py.exists():
+            python_bin = str(venv_py)
     script_path = str(Path(__file__).resolve())
     subprocess.Popen(
         [python_bin, script_path, "daemon"],
@@ -727,7 +753,9 @@ def main():
             print(json.dumps({"ok": False, "error": "Missing IP"}))
             sys.exit(1)
         ip = sys.argv[2]
-        print(json.dumps(client_request({"cmd": "select_tv", "ip": ip})))
+        name = sys.argv[3] if len(sys.argv) > 3 else ""
+        port = int(sys.argv[4]) if len(sys.argv) > 4 else 6466
+        print(json.dumps(client_request({"cmd": "select_tv", "ip": ip, "name": name, "port": port})))
     elif cmd == "set-button":
         if len(sys.argv) < 5:
             print(json.dumps({"ok": False, "error": "Usage: set-button <slot> <name> <app> [icon]"}))

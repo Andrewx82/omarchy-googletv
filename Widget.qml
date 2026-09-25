@@ -253,8 +253,11 @@ Panel {
     }
   }
 
-  function selectTv(ip) {
-    selectTvProc.command = [root.pythonBin, root.backendScript, "select-tv", ip]
+  function selectTv(ip, name, port) {
+    var cmd = [root.pythonBin, root.backendScript, "select-tv", ip]
+    if (name) cmd.push(name)
+    if (port) cmd.push(String(port))
+    selectTvProc.command = cmd
     selectTvProc.running = true
   }
 
@@ -310,6 +313,14 @@ Panel {
 
     function show(): void { open() }
     function hide(): void { close() }
+
+    function scan(): void {
+      root.scanNetwork()
+    }
+
+    function refresh(): void {
+      root.refreshStatus()
+    }
 
     function toggle(): void {
       if (root.isFloating) {
