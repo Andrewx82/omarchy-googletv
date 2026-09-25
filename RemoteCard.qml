@@ -26,6 +26,18 @@ Item {
     }
   }
 
+  TapHandler {
+    onTapped: function(eventPoint) {
+      if (sendTextInput && sendTextInput.activeFocus) {
+        var pt = sendTextInput.mapFromItem(cardRoot, eventPoint.position.x, eventPoint.position.y)
+        if (pt.x < 0 || pt.x > sendTextInput.width || pt.y < 0 || pt.y > sendTextInput.height) {
+          sendTextInput.focus = false
+          keyCatcher.forceActiveFocus()
+        }
+      }
+    }
+  }
+
   PanelKeyCatcher {
     id: keyCatcher
     anchors.fill: parent
@@ -404,11 +416,18 @@ Item {
               placeholderText: "Send text to TV..."
               font.pixelSize: Style.font.caption
               verticalPadding: Style.space(2)
+              Keys.onEscapePressed: function(event) {
+                focus = false
+                keyCatcher.forceActiveFocus()
+                event.accepted = true
+              }
               onAccepted: {
                 if (text.trim().length > 0) {
                   rootWidget.sendText(text.trim())
                   text = ""
                 }
+                focus = false
+                keyCatcher.forceActiveFocus()
               }
             }
 
@@ -426,6 +445,8 @@ Item {
                   rootWidget.sendText(sendTextInput.text.trim())
                   sendTextInput.text = ""
                 }
+                sendTextInput.focus = false
+                keyCatcher.forceActiveFocus()
               }
             }
           }

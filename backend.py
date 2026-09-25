@@ -490,10 +490,10 @@ class GoogleTVDaemon:
     async def send_text_to_tv(self, text_str: str) -> None:
         """Send text to TV via Android TV Remote v2 protocol.
         
-        Uses RemoteImeBatchEdit with insert=0 and full replacement range (start=0, end=1000).
-        This directly instructs Android TV's virtual keyboard (Leanback/Gboard) to clear any
-        prior text and reliably input the new string character-by-character into the active
-        search/input field across Google TV Search, YouTube, Netflix, Nuvio, and all TV apps.
+        Uses RemoteImeBatchEdit with insert=1 (commit) and matching boundary selection
+        (start=len, end=len). This properly commits the text into Android TV's virtual keyboard
+        (Leanback/Gboard) so the text appears and remains persistently in the active
+        search/input field across all Android TV apps without disappearing.
         """
         if not self.remote:
             return
@@ -504,8 +504,9 @@ class GoogleTVDaemon:
 
         if RemoteMessage and RemoteImeBatchEdit and RemoteEditInfo and RemoteImeObject:
             try:
-                obj = RemoteImeObject(start=0, end=1000, value=text_str)
-                edit = RemoteEditInfo(insert=0, text_field_status=obj)
+                length = len(text_str)
+                obj = RemoteImeObject(start=length, end=length, value=text_str)
+                edit = RemoteEditInfo(insert=1, text_field_status=obj)
                 batch = RemoteImeBatchEdit(ime_counter=0, field_counter=0, edit_info=[edit])
                 msg = RemoteMessage()
                 msg.remote_ime_batch_edit.CopyFrom(batch)
