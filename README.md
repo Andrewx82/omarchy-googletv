@@ -151,7 +151,20 @@ The backend CLI can also be used in terminal scripts or bound to custom Hyprland
 
 ### Send Text
 ```bash
+# Via stdin (recommended for sensitive text / passwords to avoid exposing in process list):
+echo "Interstellar" | ~/.config/omarchy/plugins/omarchy-googletv/backend.py text
+
+# Or via command line argument:
 ~/.config/omarchy/plugins/omarchy-googletv/backend.py text "Interstellar"
+```
+
+### Pair Device via CLI
+```bash
+# Start pairing session:
+~/.config/omarchy/plugins/omarchy-googletv/backend.py pair-start 192.168.1.100
+
+# Complete pairing via stdin (avoids exposing pairing code in process list):
+echo "123456" | ~/.config/omarchy/plugins/omarchy-googletv/backend.py pair-finish
 ```
 
 ### Shell IPC Commands

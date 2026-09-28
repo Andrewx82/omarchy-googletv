@@ -273,15 +273,64 @@ def save_config(cfg: Dict[str, Any]):
         json.dump(cfg, f, indent=2)
     temp_file.replace(CONFIG_FILE)
 
+def _run_bounded_scan(service: str, timeout_sec: int = 2, max_bytes: int = 65536, max_lines: int = 200) -> List[str]:
+    """Run avahi-browse with strict byte and line limits to protect against local network mDNS flood exhaustion."""
+    cmd = ["timeout", str(timeout_sec), "avahi-browse", "-rtp", service]
+    lines: List[str] = []
+    total_bytes = 0
+    proc = None
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        buf = bytearray()
+        while True:
+            chunk = proc.stdout.read(4096)
+            if not chunk:
+                break
+            total_bytes += len(chunk)
+            if total_bytes > max_bytes:
+                allowed = max(0, max_bytes - (total_bytes - len(chunk)))
+                buf.extend(chunk[:allowed])
+                break
+            buf.extend(chunk)
+
+        for line in buf.decode("utf-8", errors="replace").splitlines():
+            lines.append(line)
+            if len(lines) >= max_lines:
+                break
+    except Exception:
+        pass
+    finally:
+        if proc:
+            if proc.stdout:
+                try:
+                    proc.stdout.close()
+                except Exception:
+                    pass
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+            try:
+                proc.wait(timeout=0.5)
+            except Exception:
+                pass
+    return lines
+
 def scan_network(timeout_sec: int = 2) -> List[Dict[str, Any]]:
     """Scan local network for Android TV / Google TV / Cast devices via avahi-browse."""
     devices: Dict[str, Dict[str, Any]] = {}
 
-    # Scan _androidtvremote2._tcp
+    # Scan _androidtvremote2._tcp with bounded limits
     try:
-        cmd = ["timeout", str(timeout_sec), "avahi-browse", "-rtp", "_androidtvremote2._tcp"]
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_sec + 1)
-        for line in p.stdout.splitlines():
+        for line in _run_bounded_scan("_androidtvremote2._tcp", timeout_sec=timeout_sec):
             parts = line.split(";")
             if len(parts) >= 9 and parts[0] == "=" and parts[2] == "IPv4":
                 name = parts[3].strip()
@@ -297,11 +346,9 @@ def scan_network(timeout_sec: int = 2) -> List[Dict[str, Any]]:
     except Exception:
         pass
 
-    # Also scan _googlecast._tcp for friendly names and TV device models
+    # Also scan _googlecast._tcp for friendly names and TV device models with bounded limits
     try:
-        cmd2 = ["timeout", str(timeout_sec), "avahi-browse", "-rtp", "_googlecast._tcp"]
-        p2 = subprocess.run(cmd2, capture_output=True, text=True, timeout=timeout_sec + 1)
-        for line in p2.stdout.splitlines():
+        for line in _run_bounded_scan("_googlecast._tcp", timeout_sec=timeout_sec):
             parts = line.split(";")
             if len(parts) >= 9 and parts[0] == "=" and parts[2] == "IPv4":
                 ip = parts[7].strip()
@@ -591,7 +638,7 @@ class GoogleTVDaemon:
 
             try:
                 await self.send_text_to_tv(text_str)
-                return {"ok": True, "text": text_str}
+                return {"ok": True}
             except Exception as e:
                 self.connected = False
                 return {"ok": False, "error": str(e)}
@@ -919,7 +966,7 @@ def client_request(payload: Dict[str, Any], timeout: float = 5.0) -> Dict[str, A
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: backend.py [daemon|ensure-daemon|status|key <NAME>|launch <APP>|text <TEXT>|scan|pair-start [IP]|pair-finish <CODE>|add-tv <IP> [NAME]|select-tv <IP>|set-button <SLOT> <NAME> <APP> [ICON]]")
+        print("Usage: backend.py [daemon|ensure-daemon|status|key <NAME>|launch <APP>|text [TEXT]|scan|pair-start [IP]|pair-finish [CODE]|add-tv <IP> [NAME]|select-tv <IP>|set-button <SLOT> <NAME> <APP> [ICON]]")
         sys.exit(1)
 
     cmd = sys.argv[1]
@@ -944,10 +991,13 @@ def main():
         app = " ".join(sys.argv[2:])
         print(json.dumps(client_request({"cmd": "launch", "app": app})))
     elif cmd == "text":
-        if len(sys.argv) < 3:
-            print(json.dumps({"ok": False, "error": "Missing text argument"}))
+        if len(sys.argv) > 2 and sys.argv[2] != "-":
+            text_arg = " ".join(sys.argv[2:])
+        else:
+            text_arg = sys.stdin.readline().rstrip("\r\n")
+        if not text_arg:
+            print(json.dumps({"ok": False, "error": "Missing text"}))
             sys.exit(1)
-        text_arg = " ".join(sys.argv[2:])
         print(json.dumps(client_request({"cmd": "text", "text": text_arg}, timeout=15.0)))
     elif cmd == "scan":
         # Scanning can take up to 3 seconds
@@ -956,10 +1006,13 @@ def main():
         ip = sys.argv[2] if len(sys.argv) > 2 else ""
         print(json.dumps(client_request({"cmd": "pair_start", "ip": ip}, timeout=10.0)))
     elif cmd == "pair-finish":
-        if len(sys.argv) < 3:
+        if len(sys.argv) > 2 and sys.argv[2] != "-":
+            code = sys.argv[2]
+        else:
+            code = (sys.stdin.readline() or "").strip()
+        if not code:
             print(json.dumps({"ok": False, "error": "Missing pairing code"}))
             sys.exit(1)
-        code = sys.argv[2]
         print(json.dumps(client_request({"cmd": "pair_finish", "code": code}, timeout=10.0)))
     elif cmd == "pair-cancel":
         print(json.dumps(client_request({"cmd": "pair_cancel"})))

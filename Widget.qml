@@ -100,10 +100,39 @@ Panel {
     Quickshell.execDetached([root.pythonBin, root.backendScript, "launch", appId])
   }
 
+  Process {
+    id: sendTextProc
+    property string payload: ""
+    command: [root.pythonBin, root.backendScript, "text"]
+    stdinEnabled: true
+    running: false
+    onStarted: {
+      write(payload + "\n")
+      payload = ""
+    }
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try {
+          var data = JSON.parse(text)
+          if (data.ok) {
+            statusMessage = "Text sent"
+          } else if (data.error) {
+            statusMessage = data.error
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+  }
+
   function sendText(textStr) {
     if (!textStr || textStr.trim().length === 0) return
-    statusMessage = "Text sent: " + textStr
-    Quickshell.execDetached([root.pythonBin, root.backendScript, "text", textStr.trim()])
+    statusMessage = "Sending text to TV..."
+    if (sendTextProc.running) sendTextProc.running = false
+    sendTextProc.payload = textStr.trim()
+    sendTextProc.running = true
   }
 
   function refreshStatus() {
@@ -199,12 +228,20 @@ Panel {
       return
     }
     root.pairingError = ""
-    pairFinishProc.command = [root.pythonBin, root.backendScript, "pair-finish", code]
+    if (pairFinishProc.running) pairFinishProc.running = false
+    pairFinishProc.secretCode = code.trim()
     pairFinishProc.running = true
   }
 
   Process {
     id: pairFinishProc
+    property string secretCode: ""
+    command: [root.pythonBin, root.backendScript, "pair-finish"]
+    stdinEnabled: true
+    onStarted: {
+      write(secretCode + "\n")
+      secretCode = ""
+    }
     running: false
     stdout: StdioCollector {
       waitForEnd: true
