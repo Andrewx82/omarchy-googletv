@@ -70,23 +70,19 @@ Seamlessly toggle between a compact status-bar popup and a persistent, draggable
 
 ## Installation
 
-### Method 1: Using the Omarchy Plugin CLI (Recommended)
+### One-Command Quick Install (Recommended)
+
+Run this single command in your terminal to install the plugin, enable it in your status bar, and set up dependencies:
 
 ```bash
-omarchy plugin add https://github.com/<your-username>/omarchy-googletv.git --enable
+omarchy plugin add https://github.com/Andrewx82/omarchy-googletv.git --enable && ~/.config/omarchy/plugins/omarchy-googletv/setup.sh
 ```
 
-Then install the Python dependencies:
-
-```bash
-~/.config/omarchy/plugins/omarchy-googletv/setup.sh
-```
-
-### Method 2: Manual Installation
+### Manual Installation
 
 1. Clone the repository into your Omarchy plugins directory:
    ```bash
-   git clone https://github.com/<your-username>/omarchy-googletv.git ~/.config/omarchy/plugins/omarchy-googletv
+   git clone https://github.com/Andrewx82/omarchy-googletv.git ~/.config/omarchy/plugins/omarchy-googletv
    ```
 
 2. Run the dependency setup script:
@@ -99,19 +95,35 @@ Then install the Python dependencies:
    omarchy plugin enable omarchy-googletv --section right
    ```
 
-4. *(Optional but Recommended)* Add the floating window rule in `~/.config/hypr/looknfeel.lua`:
-   ```lua
-   -- Google TV Remote floating window
-   o.window({ class = "^org.quickshell$", title = "^Google TV Remote$" }, {
-     float = true,
-     pin = true,
-     size = "340 680",
-   })
-   ```
-   Then reload Hyprland:
-   ```bash
-   hyprctl reload
-   ```
+### Updating & Removing
+
+- **Update to latest version**:
+  ```bash
+  omarchy plugin update omarchy-googletv --yes
+  ```
+
+- **Uninstall**:
+  ```bash
+  omarchy plugin remove omarchy-googletv --yes
+  ```
+
+### Floating Window Rule (Recommended)
+
+To make the detached floating window float and pin across workspaces automatically, add this rule to `~/.config/hypr/looknfeel.lua`:
+
+```lua
+-- Google TV Remote floating window
+o.window({ class = "^org.quickshell$", title = "^Google TV Remote$" }, {
+  float = true,
+  pin = true,
+  size = "340 680",
+})
+```
+
+Then reload Hyprland:
+```bash
+hyprctl reload
+```
 
 ---
 
