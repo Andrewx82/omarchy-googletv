@@ -324,6 +324,16 @@ def _run_bounded_scan(service: str, timeout_sec: int = 2, max_bytes: int = 65536
                 pass
     return lines
 
+def _sanitize_text(val: Any, max_len: int = 64) -> str:
+    """Sanitize strings from untrusted sources (e.g. mDNS TXT records, network announcements) to prevent markup injection."""
+    if not val or not isinstance(val, str):
+        return ""
+    # Strip any control characters or non-printable characters
+    cleaned = "".join(ch for ch in val if ch.isprintable())
+    # Strip dangerous HTML/markup delimiters
+    cleaned = cleaned.replace("<", "").replace(">", "").strip()
+    return cleaned[:max_len]
+
 def scan_network(timeout_sec: int = 2) -> List[Dict[str, Any]]:
     """Scan local network for Android TV / Google TV / Cast devices via avahi-browse."""
     devices: Dict[str, Dict[str, Any]] = {}
@@ -333,11 +343,11 @@ def scan_network(timeout_sec: int = 2) -> List[Dict[str, Any]]:
         for line in _run_bounded_scan("_androidtvremote2._tcp", timeout_sec=timeout_sec):
             parts = line.split(";")
             if len(parts) >= 9 and parts[0] == "=" and parts[2] == "IPv4":
-                name = parts[3].strip()
+                name = _sanitize_text(parts[3].strip())
                 ip = parts[7].strip()
                 port = int(parts[8]) if parts[8].isdigit() else 6466
                 devices[ip] = {
-                    "name": name,
+                    "name": name or f"Google TV ({ip})",
                     "ip": ip,
                     "port": port,
                     "model": "Android TV / Google TV",
@@ -355,18 +365,18 @@ def scan_network(timeout_sec: int = 2) -> List[Dict[str, Any]]:
                 txt = parts[9] if len(parts) > 9 else ""
                 fn_match = re.search(r'"fn=([^"]+)"', txt)
                 md_match = re.search(r'"md=([^"]+)"', txt)
-                fn = fn_match.group(1).strip() if fn_match else parts[3].strip()
-                md = md_match.group(1).strip() if md_match else "Chromecast"
+                fn = _sanitize_text(fn_match.group(1).strip() if fn_match else parts[3].strip())
+                md = _sanitize_text(md_match.group(1).strip() if md_match else "Chromecast")
 
                 # Check if it looks like a TV or streamer or already discovered via remote2
                 is_tv_device = any(k in md.lower() for k in ["tv", "shield", "streamer", "bravia", "fire", "chromecast"])
                 if is_tv_device or ip in devices:
                     if ip not in devices:
                         devices[ip] = {
-                            "name": fn or parts[3].strip(),
+                            "name": fn or _sanitize_text(parts[3].strip()) or f"Google TV ({ip})",
                             "ip": ip,
                             "port": 6466,
-                            "model": md,
+                            "model": md or "Chromecast",
                             "paired": False
                         }
                     else:
@@ -384,7 +394,7 @@ def scan_network(timeout_sec: int = 2) -> List[Dict[str, Any]]:
         if ip in saved_tvs:
             dev["paired"] = saved_tvs[ip].get("paired", False)
             if saved_tvs[ip].get("name"):
-                dev["name"] = saved_tvs[ip]["name"]
+                dev["name"] = _sanitize_text(saved_tvs[ip]["name"])
 
     return list(devices.values())
 
@@ -759,9 +769,9 @@ class GoogleTVDaemon:
 
         elif cmd == "add_tv":
             ip = req.get("ip", "").strip()
-            name = req.get("name", "").strip() or f"Google TV ({ip})"
+            name = _sanitize_text(req.get("name", "").strip()) or f"Google TV ({ip})"
             port = int(req.get("port", 6466))
-            model = req.get("model", "Google TV")
+            model = _sanitize_text(req.get("model", "Google TV")) or "Google TV"
             if not ip:
                 return {"ok": False, "error": "Missing IP"}
 
@@ -796,9 +806,9 @@ class GoogleTVDaemon:
 
         elif cmd == "select_tv":
             ip = req.get("ip", "").strip()
-            name = req.get("name", "").strip()
+            name = _sanitize_text(req.get("name", "").strip())
             port = int(req.get("port", 6466))
-            model = req.get("model", "Google TV")
+            model = _sanitize_text(req.get("model", "Google TV")) or "Google TV"
             if not ip:
                 return {"ok": False, "error": "Missing IP"}
 

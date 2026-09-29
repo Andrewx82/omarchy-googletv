@@ -115,6 +115,7 @@ Item {
 
                   Text {
                     text: rootWidget.tvName
+                    textFormat: Text.PlainText
                     color: (rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground
                     font.family: rootWidget.bar ? rootWidget.bar.fontFamily : Style.font.family
                     font.pixelSize: Style.font.body
@@ -135,6 +136,7 @@ Item {
 
                 Text {
                   text: rootWidget.tvIp ? (rootWidget.tvIp + (rootWidget.connected ? " • Connected" : (rootWidget.tvPaired ? " • Standby" : " • Unpaired"))) : "No TV selected"
+                  textFormat: Text.PlainText
                   color: Qt.darker((rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground, 1.4)
                   font.family: rootWidget.bar ? rootWidget.bar.fontFamily : Style.font.family
                   font.pixelSize: Style.font.caption
@@ -579,12 +581,14 @@ Item {
                   spacing: 2
                   Text {
                     text: rootWidget.tvName
+                    textFormat: Text.PlainText
                     color: (rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground
                     font.bold: true
                     font.pixelSize: Style.font.body
                   }
                   Text {
                     text: rootWidget.tvIp ? (rootWidget.tvIp + " (" + rootWidget.tvModel + ")") : "No TV configured"
+                    textFormat: Text.PlainText
                     color: Qt.darker((rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground, 1.4)
                     font.pixelSize: Style.font.caption
                   }
@@ -592,6 +596,7 @@ Item {
 
                 Text {
                   text: rootWidget.tvPaired ? "󰄬 Paired" : "󰀦 Unpaired"
+                  textFormat: Text.PlainText
                   color: rootWidget.tvPaired ? Color.accent : Color.urgent
                   font.bold: true
                   font.pixelSize: Style.font.caption
@@ -702,12 +707,14 @@ Item {
                     spacing: 2
                     Text {
                       text: modelData.name
+                      textFormat: Text.PlainText
                       color: (rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground
                       font.bold: true
                       font.pixelSize: Style.font.body
                     }
                     Text {
                       text: modelData.ip + " • " + modelData.model + (modelData.paired ? " (Paired)" : " (Unpaired)")
+                      textFormat: Text.PlainText
                       color: Qt.darker((rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground, 1.4)
                       font.pixelSize: Style.font.caption
                     }
@@ -894,6 +901,7 @@ Item {
           Text {
             width: parent.width
             text: rootWidget.pairingError
+            textFormat: Text.PlainText
             color: Color.urgent
             font.bold: true
             font.pixelSize: Style.font.caption
@@ -1027,6 +1035,7 @@ Item {
 
               Text {
                 text: "Currently assigned to Slot " + rootWidget.selectedSlot + ":"
+                textFormat: Text.PlainText
                 color: Qt.darker((rootWidget && rootWidget.barForeground) ? rootWidget.barForeground : Color.foreground, 1.4)
                 font.pixelSize: Style.font.caption
               }
@@ -1036,6 +1045,7 @@ Item {
                   var cur = rootWidget.programmableButtons[rootWidget.selectedSlot - 1]
                   return cur ? (cur.name + " (" + cur.app + ")") : "Not assigned"
                 }
+                textFormat: Text.PlainText
                 color: Color.accent
                 font.bold: true
                 font.pixelSize: Style.font.body
