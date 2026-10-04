@@ -70,13 +70,15 @@ Seamlessly toggle between a compact status-bar popup and a persistent, draggable
 
 ## Installation
 
-### One-Command Quick Install (Recommended)
+### Standard Installation (Recommended)
 
-Run this single command in your terminal to install the plugin, enable it in your status bar, and set up dependencies:
+Install and enable the plugin with a single command:
 
 ```bash
-omarchy plugin add https://github.com/Andrewx82/omarchy-googletv.git --enable && ~/.config/omarchy/plugins/omarchy-googletv/setup.sh
+omarchy plugin add https://github.com/Andrewx82/omarchy-googletv.git --enable
 ```
+
+The plugin automatically bootstraps and cryptographically verifies its isolated virtual environment (`requirements.lock`) on first launch with zero manual setup.
 
 ### Manual Installation
 
@@ -85,15 +87,12 @@ omarchy plugin add https://github.com/Andrewx82/omarchy-googletv.git --enable &&
    git clone https://github.com/Andrewx82/omarchy-googletv.git ~/.config/omarchy/plugins/omarchy-googletv
    ```
 
-2. Run the dependency setup script:
-   ```bash
-   ~/.config/omarchy/plugins/omarchy-googletv/setup.sh
-   ```
-
-3. Enable the plugin in your status bar:
+2. Enable the plugin in your status bar:
    ```bash
    omarchy plugin enable omarchy-googletv --section right
    ```
+
+*(Optional)* You can also run `~/.config/omarchy/plugins/omarchy-googletv/setup.sh` manually to pre-install dependencies ahead of time.
 
 ### Updating & Removing
 

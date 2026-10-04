@@ -24,6 +24,60 @@ if not VENV_DIR.exists():
     if fallback_venv.exists():
         VENV_DIR = fallback_venv
 
+def ensure_venv():
+    """Ensure the Python virtual environment exists and re-exec into it if needed."""
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        return
+
+    venv_py = VENV_DIR / "bin" / "python"
+
+    # Already executing inside the virtual environment python
+    if sys.executable == str(venv_py):
+        return
+
+    # If the venv exists, immediately re-exec into it
+    if venv_py.exists():
+        try:
+            os.execv(str(venv_py), [str(venv_py)] + sys.argv)
+        except OSError:
+            pass
+
+    # If venv doesn't exist, auto-bootstrap via setup.sh with safe file-locking
+    try:
+        import fcntl
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        lock_file = CONFIG_DIR / ".setup.lock"
+        with open(lock_file, "w") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            try:
+                # Double-check inside lock in case another process completed it
+                if not venv_py.exists():
+                    setup_script = Path(__file__).resolve().parent / "setup.sh"
+                    if setup_script.exists():
+                        res = subprocess.run(
+                            ["bash", str(setup_script)],
+                            capture_output=True,
+                            text=True
+                        )
+                        if res.returncode != 0:
+                            err_msg = res.stderr.strip() or res.stdout.strip()
+                            sys.stderr.write(f"Google TV plugin setup failed: {err_msg}\n")
+                            if len(sys.argv) > 1 and sys.argv[1] not in ("daemon",):
+                                print(json.dumps({"ok": False, "error": f"Dependency setup failed: {err_msg}"}))
+                            sys.exit(1)
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
+    except Exception as e:
+        sys.stderr.write(f"Setup locking error: {e}\n")
+
+    if venv_py.exists():
+        try:
+            os.execv(str(venv_py), [str(venv_py)] + sys.argv)
+        except OSError:
+            pass
+
+ensure_venv()
+
 if VENV_DIR.exists():
     lib_dir = VENV_DIR / "lib"
     if lib_dir.exists():
@@ -589,6 +643,7 @@ class GoogleTVDaemon:
 
         elif cmd == "status":
             is_connected = self._is_transport_connected()
+            venv_py = VENV_DIR / "bin" / "python"
             return {
                 "ok": True,
                 "connected": is_connected,
@@ -598,7 +653,8 @@ class GoogleTVDaemon:
                 "pairing_active": self.pairing_active,
                 "active_tv": self.get_active_tv(),
                 "config": self.config,
-                "common_apps": COMMON_APPS
+                "common_apps": COMMON_APPS,
+                "venv_python": str(venv_py) if venv_py.exists() else ""
             }
 
         elif cmd == "key":
@@ -975,9 +1031,9 @@ def client_request(payload: Dict[str, Any], timeout: float = 5.0) -> Dict[str, A
         return {"ok": False, "error": str(e)}
 
 def main():
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
         print("Usage: backend.py [daemon|ensure-daemon|status|key <NAME>|launch <APP>|text [TEXT]|scan|pair-start [IP]|pair-finish [CODE]|add-tv <IP> [NAME]|select-tv <IP>|set-button <SLOT> <NAME> <APP> [ICON]]")
-        sys.exit(1)
+        sys.exit(0 if len(sys.argv) >= 2 else 1)
 
     cmd = sys.argv[1]
 

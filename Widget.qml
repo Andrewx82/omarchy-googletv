@@ -15,7 +15,7 @@ Panel {
   readonly property string homeDir: Quickshell.env("HOME") || "/home/andrew"
   readonly property string dataDir: homeDir + "/.config/omarchy/googletv"
   readonly property string pluginDir: homeDir + "/.config/omarchy/plugins/omarchy-googletv"
-  readonly property string pythonBin: dataDir + "/.venv/bin/python"
+  property string pythonBin: "python3"
   readonly property string backendScript: pluginDir + "/backend.py"
 
   // Views: "remote" | "settings" | "pairing" | "apps_edit"
@@ -149,6 +149,9 @@ Panel {
         try {
           var data = JSON.parse(text)
           if (data && data.ok) {
+            if (data.venv_python && data.venv_python.length > 0) {
+              root.pythonBin = data.venv_python
+            }
             root.connected = !!data.connected
             root.isOn = !!data.is_on
             if (data.active_tv) {
