@@ -103,12 +103,76 @@ except ImportError:
     CannotConnect = ConnectionClosed = InvalidAuth = Exception
     RemoteMessage = RemoteImeBatchEdit = RemoteEditInfo = RemoteImeObject = None
 
+import hashlib
+import ssl
+import logging
+
+try:
+    from cryptography import x509
+    from cryptography.hazmat.primitives import serialization
+except ImportError:
+    x509 = None
+    serialization = None
+
+logger = logging.getLogger("omarchy-googletv")
+
 CONFIG_FILE = CONFIG_DIR / "config.json"
 CERT_DIR = CONFIG_DIR / "certs"
 CERT_FILE = CERT_DIR / "cert.pem"
 KEY_FILE = CERT_DIR / "key.pem"
 SOCKET_FILE = CONFIG_DIR / "daemon.sock"
 PID_FILE = CONFIG_DIR / "daemon.pid"
+
+def get_tv_cert_file(ip: str) -> Path:
+    safe_ip = ip.replace(":", "_").replace(".", "_")
+    return CERT_DIR / f"tv_{safe_ip}.pem"
+
+def save_tv_certificate(ip: str, cert_der: bytes) -> str:
+    """Save TV DER certificate as PEM and return its SHA-256 fingerprint."""
+    CERT_DIR.mkdir(parents=True, exist_ok=True)
+    fingerprint = hashlib.sha256(cert_der).hexdigest()
+    if x509 and serialization:
+        try:
+            cert = x509.load_der_x509_certificate(cert_der)
+            pem_bytes = cert.public_bytes(serialization.Encoding.PEM)
+            cert_file = get_tv_cert_file(ip)
+            cert_file.write_bytes(pem_bytes)
+        except Exception as e:
+            logger.warning("Failed to serialize TV certificate to PEM: %s", e)
+    return fingerprint
+
+def create_tv_ssl_context(ip: str) -> ssl.SSLContext:
+    """Create an SSLContext configured with client cert and pinning the TV certificate if known."""
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ssl_context.check_hostname = False
+    if CERT_FILE.exists() and KEY_FILE.exists():
+        try:
+            ssl_context.load_cert_chain(str(CERT_FILE), str(KEY_FILE))
+        except Exception as e:
+            logger.warning("Failed to load client cert chain: %s", e)
+
+    tv_cert_file = get_tv_cert_file(ip)
+    if tv_cert_file.exists():
+        ssl_context.verify_mode = ssl.CERT_REQUIRED
+        try:
+            ssl_context.load_verify_locations(cafile=str(tv_cert_file))
+        except Exception as e:
+            logger.warning("Failed to load TV verify locations: %s", e)
+            ssl_context.verify_mode = ssl.CERT_NONE
+    else:
+        ssl_context.verify_mode = ssl.CERT_NONE
+    return ssl_context
+
+def _get_transport_peer_cert_der(transport) -> Optional[bytes]:
+    if not transport:
+        return None
+    ssl_obj = transport.get_extra_info("ssl_object")
+    if not ssl_obj:
+        return None
+    try:
+        return ssl_obj.getpeercert(True)
+    except Exception:
+        return None
 
 COMMON_APPS = [
     {"id": "youtube", "name": "YouTube", "app": "com.google.android.youtube.tv", "icon": "󰗃", "category": "Video"},
@@ -514,6 +578,42 @@ class GoogleTVDaemon:
         except Exception:
             pass
 
+    def _verify_connected_tv_identity(self, ip: str) -> bool:
+        """Verify that the currently connected peer certificate matches the TV identity authenticated during pairing."""
+        if not self.remote:
+            return False
+        transport = getattr(self.remote, "_transport", None)
+        if not transport:
+            return False
+        peer_cert_der = _get_transport_peer_cert_der(transport)
+        if not peer_cert_der:
+            return False
+        actual_fingerprint = hashlib.sha256(peer_cert_der).hexdigest()
+
+        tv = self.config.get("tvs", {}).get(ip, {})
+        expected_fingerprint = tv.get("cert_fingerprint")
+
+        # If no fingerprint saved in config but cert file exists on disk
+        if not expected_fingerprint:
+            cert_file = get_tv_cert_file(ip)
+            if cert_file.exists() and x509 and serialization:
+                try:
+                    loaded_cert = x509.load_pem_x509_certificate(cert_file.read_bytes())
+                    expected_fingerprint = hashlib.sha256(loaded_cert.public_bytes(serialization.Encoding.DER)).hexdigest()
+                    tv["cert_fingerprint"] = expected_fingerprint
+                    save_config(self.config)
+                except Exception:
+                    pass
+
+        # If still no expected fingerprint (e.g. migration of pre-existing paired TV), pin it on first connect
+        if not expected_fingerprint:
+            expected_fingerprint = save_tv_certificate(ip, peer_cert_der)
+            tv["cert_fingerprint"] = expected_fingerprint
+            save_config(self.config)
+            return True
+
+        return actual_fingerprint.lower() == expected_fingerprint.lower()
+
     async def connect_active_tv(self):
         tv = self.get_active_tv()
         if not tv:
@@ -546,12 +646,25 @@ class GoogleTVDaemon:
                 loop=self.loop
             )
             await self.remote.async_generate_cert_if_missing()
+
+            # Enforce SSL context bound to the TV's authenticated identity
+            self.remote._ssl_context = create_tv_ssl_context(ip)
+
             self.remote.add_is_on_updated_callback(self._on_is_on_updated)
             self.remote.add_current_app_updated_callback(self._on_current_app_updated)
             self.remote.add_volume_info_updated_callback(self._on_volume_info_updated)
             self.remote.add_is_available_updated_callback(self._on_is_available_updated)
 
             await asyncio.wait_for(self.remote.async_connect(), timeout=4.0)
+
+            # Strict verification of peer identity upon connection
+            if not self._verify_connected_tv_identity(ip):
+                logger.warning("TV identity mismatch for %s: rejecting connection to untrusted peer", ip)
+                self.remote.disconnect()
+                self.remote = None
+                self.connected = False
+                return False
+
             self.connected = True
             self.remote.keep_reconnecting(invalid_auth_callback=self._on_invalid_auth)
             return True
@@ -601,17 +714,30 @@ class GoogleTVDaemon:
     async def send_text_to_tv(self, text_str: str) -> None:
         """Send text to TV via Android TV Remote v2 protocol.
         
+        Binds to authenticated TV identity and strictly rejects changed or unverified peers.
         Uses RemoteImeBatchEdit with insert=1 (commit) and matching boundary selection
         (start=len, end=len). This properly commits the text into Android TV's virtual keyboard
         (Leanback/Gboard) so the text appears and remains persistently in the active
         search/input field across all Android TV apps without disappearing.
         """
         if not self.remote:
-            return
+            raise ConnectionError("TV remote is not connected")
+
+        tv = self.get_active_tv()
+        ip = tv.get("ip") if tv else ""
+        if not ip or not self._verify_connected_tv_identity(ip):
+            if self.remote:
+                try:
+                    self.remote.disconnect()
+                except Exception:
+                    pass
+                self.remote = None
+            self.connected = False
+            raise PermissionError("TV identity verification failed: connected peer does not match authenticated TV identity from pairing")
 
         proto = getattr(self.remote, "_remote_message_protocol", None)
         if not proto:
-            return
+            raise ConnectionError("Remote protocol is not ready")
 
         if RemoteMessage and RemoteImeBatchEdit and RemoteEditInfo and RemoteImeObject:
             try:
@@ -623,14 +749,11 @@ class GoogleTVDaemon:
                 msg.remote_ime_batch_edit.CopyFrom(batch)
                 proto._send_message(msg)
                 return
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("RemoteImeBatchEdit failed, falling back to send_text: %s", e)
 
         # Fallback to standard send_text if protobuf classes are unavailable
-        try:
-            self.remote.send_text(text_str)
-        except Exception:
-            pass
+        self.remote.send_text(text_str)
 
     async def process_command(self, cmd: str, req: Dict[str, Any]) -> Dict[str, Any]:
         if cmd == "ping":
@@ -776,27 +899,41 @@ class GoogleTVDaemon:
                 return {"ok": False, "error": "No active pairing session. Start pairing first."}
 
             try:
+                # Capture the peer certificate from the authenticated pairing transport before closing
+                peer_cert_der = None
+                proto = getattr(self.pairing_remote, "_pairing_message_protocol", None)
+                if proto and getattr(proto, "transport", None):
+                    peer_cert_der = _get_transport_peer_cert_der(proto.transport)
+
                 await asyncio.wait_for(self.pairing_remote.async_finish_pairing(code), timeout=8.0)
                 self.pairing_active = False
                 target_ip = self.pairing_ip
                 self.pairing_remote = None
 
+                # Persist authenticated TV certificate and fingerprint
+                cert_fingerprint = ""
+                if peer_cert_der:
+                    cert_fingerprint = save_tv_certificate(target_ip, peer_cert_der)
+
                 # Update config
                 tvs = self.config.get("tvs", {})
                 if target_ip in tvs:
                     tvs[target_ip]["paired"] = True
+                    if cert_fingerprint:
+                        tvs[target_ip]["cert_fingerprint"] = cert_fingerprint
                 else:
                     tvs[target_ip] = {
                         "name": f"Google TV ({target_ip})",
                         "ip": target_ip,
                         "port": 6466,
-                        "paired": True
+                        "paired": True,
+                        "cert_fingerprint": cert_fingerprint
                     }
                 self.config["selected_tv"] = target_ip
                 self.config["tvs"] = tvs
                 save_config(self.config)
 
-                # Connect active TV
+                # Connect active TV with verified identity binding
                 await self.connect_active_tv()
                 return {"ok": True, "status": "paired", "ip": target_ip}
             except Exception as e:
@@ -854,6 +991,13 @@ class GoogleTVDaemon:
                     self.config["selected_tv"] = next(iter(tvs.keys())) if tvs else ""
                 self.config["tvs"] = tvs
                 save_config(self.config)
+                # Clean up stored TV certificate
+                cert_file = get_tv_cert_file(ip)
+                if cert_file.exists():
+                    try:
+                        cert_file.unlink()
+                    except Exception:
+                        pass
                 if self.remote:
                     self.remote.disconnect()
                     self.remote = None
